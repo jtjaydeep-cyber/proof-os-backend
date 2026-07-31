@@ -12,11 +12,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Database Connection Pool
 // -----------------------------------------------------------------------------
 const pool = new Pool({
-  user: process.env.PGUSER || 'u0_a417',
-  host: process.env.PGHOST || 'localhost',
-  database: process.env.PGDATABASE || 'proof_os',
-  password: process.env.PGPASSWORD || '',
-  port: parseInt(process.env.PGPORT || '5432'),
+  connectionString: process.env.DATABASE_URL || 'postgres://u0_a417@localhost:5432/proof_os',
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
 });
 
 // -----------------------------------------------------------------------------
@@ -46,7 +43,29 @@ function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 // -----------------------------------------------------------------------------
-// 1. User Creation Endpoint (Protected)
+// 1A. User Lookup Endpoint (By Email for Login)
+// -----------------------------------------------------------------------------
+app.get('/api/users/lookup', async (req: Request, res: Response) => {
+  try {
+    const email = req.query.email as string;
+    if (!email) {
+      return res.status(400).json({ error: 'Email query parameter is required.' });
+    }
+
+    const result = await pool.query('SELECT id, email, "identityTrustLevel" FROM users WHERE email = $1', [email]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'User not found.' });
+    }
+
+    return res.json({ success: true, user: result.rows[0] });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// 1B. User Creation Endpoint (Protected)
 // -----------------------------------------------------------------------------
 app.post('/api/users', authenticateKey, async (req: Request, res: Response) => {
   try {
