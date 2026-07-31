@@ -1,0 +1,51 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum IdentityTrustLevel {
+  LEVEL_0
+  LEVEL_1
+  LEVEL_2
+  LEVEL_3
+  LEVEL_4
+}
+
+enum EvidenceClass {
+  CLASS_A
+  CLASS_B
+  CLASS_C
+  CLASS_D
+  CLASS_E
+  CLASS_F
+}
+
+model User {
+  id                 String             @id @default(uuid()) @db.Uuid
+  email              String             @unique
+  identityTrustLevel IdentityTrustLevel @default(LEVEL_0)
+  evidenceArtifacts  EvidenceArtifact[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@map("users")
+}
+
+model EvidenceArtifact {
+  id                  String        @id @default(uuid()) @db.Uuid
+  userId              String        @db.Uuid
+  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title               String
+  description         String?
+  eClass              EvidenceClass
+  sourceUri           String
+  aiConfidenceScore   Float?        @default(0.0)
+  observedAt          DateTime
+  createdAt           DateTime      @default(now())
+
+  @@map("evidence_artifacts")
+}
