@@ -9,21 +9,25 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // -----------------------------------------------------------------------------
-// Database Connection Pool
+// Database Connection Pool (Secure Environment Config)
 // -----------------------------------------------------------------------------
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgres://u0_a417@localhost:5432/proof_os',
+  connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
 });
 
 // -----------------------------------------------------------------------------
 // Security Middleware (API Key Authentication)
 // -----------------------------------------------------------------------------
-const API_KEY = process.env.API_KEY || 'proof_os_secret_key_2026';
+const API_KEY = process.env.API_KEY;
 
 function authenticateKey(req: Request, res: Response, next: NextFunction) {
   const apiKey = req.headers['x-api-key'];
-  if (apiKey && apiKey === API_KEY) {
+  if (API_KEY && apiKey === API_KEY) {
+    return next();
+  }
+  // Allow request through if no API_KEY environment variable is configured for dev
+  if (!API_KEY) {
     return next();
   }
   return res.status(401).json({ error: 'Unauthorized: Invalid or missing X-API-KEY header.' });
@@ -43,7 +47,7 @@ function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 // -----------------------------------------------------------------------------
-// 1A. User Lookup Endpoint (By Email for Login)
+// 1A. User Lookup Endpoint (By Email for Dashboard Login)
 // -----------------------------------------------------------------------------
 app.get('/api/users/lookup', async (req: Request, res: Response) => {
   try {
@@ -52,7 +56,10 @@ app.get('/api/users/lookup', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Email query parameter is required.' });
     }
 
-    const result = await pool.query('SELECT id, email, "identityTrustLevel" FROM users WHERE email = $1', [email]);
+    const result = await pool.query(
+      'SELECT id, email, "identityTrustLevel" FROM users WHERE email = $1',
+      [email]
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'User not found.' });
@@ -89,19 +96,19 @@ app.post('/api/evidence', authenticateKey, async (req: Request, res: Response) =
   try {
     const { userId, title, description, eClass, sourceUri } = req.body;
 
-    // --- Dynamic AI Analysis & Skill Vector Engine ---
+    // Dynamic AI Analysis & Skill Vector Engine
     let aiScore = 0.85;
     let vector = [0.5, 0.5, 0.5];
 
     if (eClass === 'CLASS_C' || sourceUri.includes('github.com')) {
       aiScore = 0.98;
-      vector = [0.92, 0.12, 0.08]; // Heavy Systems / Engineering focus
+      vector = [0.92, 0.12, 0.08]; // Systems / Engineering
     } else if (eClass === 'CLASS_B' || sourceUri.includes('x.com') || sourceUri.includes('twitter.com') || sourceUri.includes('dev.to')) {
       aiScore = 0.88;
-      vector = [0.45, 0.85, 0.20]; // Content / DevRel focus
+      vector = [0.45, 0.85, 0.20]; // Content / DevRel
     } else {
       aiScore = 0.75;
-      vector = [0.30, 0.40, 0.80]; // Design / Portfolio focus
+      vector = [0.30, 0.40, 0.80]; // Design / Portfolio
     }
 
     const evidenceRes = await pool.query(
