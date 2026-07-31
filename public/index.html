@@ -36,8 +36,12 @@
       border-radius: 6px; border: 1px solid var(--border); background: #0f172a; color: #fff;
       font-size: 0.9rem;
     }
-    button { background: #0284c7; font-weight: bold; cursor: pointer; border: none; margin-top: 12px; }
+    .btn-group { display: flex; gap: 10px; margin-top: 12px; }
+    button { background: #0284c7; font-weight: bold; cursor: pointer; border: none; transition: 0.2s; }
     button:hover { background: var(--accent); color: #000; }
+    .btn-secondary { background: #334155; }
+    .btn-secondary:hover { background: #475569; color: #fff; }
+    
     .status-msg { margin-top: 10px; font-size: 0.8rem; padding: 8px; border-radius: 4px; word-break: break-word; display: none; }
     .success { background: rgba(34, 197, 94, 0.1); border: 1px solid var(--accent-green); color: var(--accent-green); display: block; }
     .error { background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; color: #ef4444; display: block; }
@@ -65,12 +69,17 @@
     </header>
 
     <div class="grid">
-      <!-- 1. Registration -->
+      <!-- 1. Registration / Login -->
       <div class="card">
-        <h2>👤 Step 1: Creator Sign Up</h2>
-        <label>Your Email:</label>
+        <h2>👤 Step 1: Creator Portal</h2>
+        <label>Your Email Address:</label>
         <input type="email" id="regEmail" placeholder="developer@example.com">
-        <button onclick="registerUser()">Create Account</button>
+        
+        <div class="btn-group">
+          <button onclick="registerUser()">Create Account</button>
+          <button onclick="loginUser()" class="btn-secondary">Login Existing</button>
+        </div>
+        
         <div id="regMsg" class="status-msg"></div>
       </div>
 
@@ -122,6 +131,7 @@
   <script>
     const API_KEY = 'proof_os_secret_key_2026';
 
+    // 1A. Register New User
     async function registerUser() {
       const email = document.getElementById('regEmail').value.trim();
       const msg = document.getElementById('regMsg');
@@ -140,11 +150,38 @@
           document.getElementById('subUserId').value = data.user.id;
           document.getElementById('certUserId').value = data.user.id;
         } else {
-          showMsg(msg, data.error || 'Registration failed', false);
+          const userFriendlyMsg = data.error?.includes('unique constraint') 
+            ? 'Email already registered! Click "Login Existing" to access your dashboard.' 
+            : (data.error || 'Registration failed');
+          showMsg(msg, userFriendlyMsg, false);
         }
       } catch (err) { showMsg(msg, err.message, false); }
     }
 
+    // 1B. Login Existing User
+    async function loginUser() {
+      const email = document.getElementById('regEmail').value.trim();
+      const msg = document.getElementById('regMsg');
+      if (!email) return showMsg(msg, 'Please enter your email to log in', false);
+
+      try {
+        const res = await fetch(`/api/users/lookup?email=${encodeURIComponent(email)}`);
+        const data = await res.json();
+
+        if (data.success && data.user) {
+          showMsg(msg, `Welcome back! Logged in as User ID: ${data.user.id}`, true);
+          document.getElementById('subUserId').value = data.user.id;
+          document.getElementById('certUserId').value = data.user.id;
+          
+          // Automatically load certificate on login
+          generateCertificate();
+        } else {
+          showMsg(msg, 'No account found with this email. Please click "Create Account".', false);
+        }
+      } catch (err) { showMsg(msg, err.message, false); }
+    }
+
+    // 2. Submit Work Link
     async function submitWork() {
       const userId = document.getElementById('subUserId').value.trim();
       const title = document.getElementById('subTitle').value.trim();
@@ -152,10 +189,9 @@
       const sourceUri = document.getElementById('subSourceUri').value.trim();
       const msg = document.getElementById('subMsg');
 
-      if (!userId || !title || !sourceUri) return showMsg(msg, 'Fill all fields', false);
+      if (!userId || !title || !sourceUri) return showMsg(msg, 'Please fill all fields', false);
 
       try {
-        // Step A: Ingest Evidence (Backend AI Engine automatically analyzes & attaches vector)
         const res = await fetch('/api/evidence', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
@@ -165,7 +201,6 @@
 
         if (!data.success) return showMsg(msg, data.error, false);
 
-        // Step B: Aggregate Profile & Persist to Postgres
         await fetch('/api/users/aggregate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
@@ -176,6 +211,7 @@
       } catch (err) { showMsg(msg, err.message, false); }
     }
 
+    // 3. Generate Certificate
     async function generateCertificate() {
       const userId = document.getElementById('certUserId').value.trim();
       const container = document.getElementById('certDisplay');
@@ -201,6 +237,7 @@
       `;
     }
 
+    // 4. Candidate Matcher
     async function searchCandidates() {
       const vecStr = document.getElementById('matchVector').value;
       const queryVector = vecStr.split(',').map(n => parseFloat(n.trim()));
