@@ -10,12 +10,12 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// API Key Auth Middleware
+// API Key Auth Middleware (with default fallback)
 const authenticateKey = (req, res, next) => {
   const apiKey = req.headers['x-api-key'];
-  const expectedKey = process.env.API_KEY;
+  const expectedKey = process.env.API_KEY || 'proof-os-secret-123';
 
-  if (expectedKey && apiKey !== expectedKey) {
+  if (apiKey !== expectedKey) {
     return res.status(401).json({ error: 'Unauthorized: Invalid or missing X-API-KEY header.' });
   }
   next();
