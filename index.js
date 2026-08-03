@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// PostgreSQL Pool
+// PostgreSQL Pool Connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
@@ -86,14 +86,15 @@ async function initDatabase() {
         "createdAt" TIMESTAMP DEFAULT NOW()
       );
     `);
-    console.log('✅ Database tables initialized!');
+    console.log('✅ All PostgreSQL database tables initialized successfully!');
   } catch (err) {
-    console.error('❌ DB Init Error:', err);
+    console.error('❌ Database Initialization Error:', err);
   }
 }
+
 initDatabase();
 
-// Health Check
+// 1. Health Check & Root
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'proof-os-backend', timestamp: new Date().toISOString() });
 });
@@ -102,7 +103,7 @@ app.get('/', (req, res) => {
   res.send('🚀 Proof OS Backend API running active');
 });
 
-// Users
+// 2. User Routes
 app.post('/api/users', async (req, res) => {
   const { email, identityTrustLevel } = req.body;
   if (!email) return res.status(400).json({ error: 'Email is required' });
@@ -121,7 +122,7 @@ app.post('/api/users', async (req, res) => {
   }
 });
 
-// Evidence
+// 3. Evidence Routes
 app.post('/api/evidence', async (req, res) => {
   const { userId, title, description, eClass, sourceUri, aiConfidenceScore } = req.body;
   if (!userId || !title || !eClass) return res.status(400).json({ error: 'Missing parameters' });
@@ -138,7 +139,7 @@ app.post('/api/evidence', async (req, res) => {
   }
 });
 
-// Opportunities & Match
+// 4. Opportunity Routes
 app.post('/api/opportunities', async (req, res) => {
   const { title, company, minTrustLevel, requiredEClass, reward } = req.body;
   try {
@@ -185,7 +186,7 @@ app.get('/api/opportunities/match/:userId', async (req, res) => {
   }
 });
 
-// Certificate Issuing & Verification
+// 5. Certificate Routes
 app.post('/api/certificates/issue', async (req, res) => {
   const { userId, title, eClass } = req.body;
   if (!userId || !title || !eClass) return res.status(400).json({ error: 'Missing parameters' });
@@ -223,7 +224,7 @@ app.get('/api/certificates/verify/:certIdOrHash', async (req, res) => {
   }
 });
 
-// SAMPARK Hub
+// 6. SAMPARK Hub Routes
 app.post('/api/sampark/listings', async (req, res) => {
   const { userId, category, title, description, price, priceUnit, location, district } = req.body;
   try {
@@ -247,6 +248,7 @@ app.get('/api/sampark/listings', async (req, res) => {
   }
 });
 
+// Start Server
 app.listen(PORT, () => {
   console.log(`🚀 Server active on port ${PORT}`);
 });
