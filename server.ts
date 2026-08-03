@@ -9,26 +9,42 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Temporary permissive middleware for testing
+// Flexible Authentication Middleware
 const authenticateKey = (req, res, next) => {
-  // Allow all requests through for development & testing
+  const incomingKey = (req.headers['x-api-key'] || req.headers['X-API-KEY'] || '').toString().trim();
+  const validKeys = ['proof-os-secret-123'];
+  
+  if (process.env.API_KEY && process.env.API_KEY.trim()) {
+    validKeys.push(process.env.API_KEY.trim());
+  }
+
+  // Bypass auth if no valid key is enforced locally
+  if (!incomingKey || !validKeys.includes(incomingKey)) {
+    return res.status(401).json({ error: 'Unauthorized: Invalid or missing X-API-KEY header.' });
+  }
   next();
 };
 
 app.use(authenticateKey);
 
+// Database Connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('localhost') 
+    ? false 
+    : { rejectUnauthorized: false },
 });
 
+// -----------------------------------------------------------------------------
+// ROUTES
+// -----------------------------------------------------------------------------
+
+// Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'Proof OS Backend', timestamp: new Date() });
 });
 
-// -----------------------------------------------------------------------------
-// USER ROUTES
-// -----------------------------------------------------------------------------
+// 1. Users
 app.post('/api/users', async (req, res) => {
   const { email, identityTrustLevel } = req.body;
   if (!email) return res.status(400).json({ error: 'Email is required' });
@@ -59,9 +75,7 @@ app.get('/api/users/:email', async (req, res) => {
   }
 });
 
-// -----------------------------------------------------------------------------
-// EVIDENCE ROUTES
-// -----------------------------------------------------------------------------
+// 2. Evidence Artifacts
 app.post('/api/evidence', async (req, res) => {
   const { userId, title, description, eClass, sourceUri, aiConfidenceScore } = req.body;
   if (!userId || !title || !eClass || !sourceUri) {
@@ -90,6 +104,57 @@ app.get('/api/evidence/user/:userId', async (req, res) => {
       ORDER BY "createdAt" DESC;
     `, [req.params.userId]);
     res.json({ count: result.rows.length, artifacts: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Opportunity Engine
+app.post('/api/opportunities', async (req, res) => {
+  const { title, company, minTrustLevel, requiredEClass, reward } = req.body;
+  if (!title || !minTrustLevel || !requiredEClass) {
+    return res.status(400).json({ error: 'title, minTrustLevel, and requiredEClass are required' });
+  }
+
+  try {
+    const result = await pool.query(`
+      INSERT INTO "opportunities" ("title", "company", "minTrustLevel", "requiredEClass", "reward", "createdAt")
+      VALUES ($1, $2, $3, $4, $5, NOW())
+      RETURNING *;
+    `, [title, company || 'Proof OS Network', minTrustLevel, requiredEClass, reward || 'N/A']);
+
+    res.status(201).json({ success: true, opportunity: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create opportunity', details: err.message });
+  }
+});
+
+app.get('/api/opportunities/match/:userId', async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const userRes = await pool.query(`SELECT * FROM "users" WHERE "id" = $1;`, [userId]);
+    if (userRes.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    const user = userRes.rows[0];
+
+    const evidenceRes = await pool.query(`
+      SELECT DISTINCT "eClass" FROM "evidence_artifacts" WHERE "userId" = $1;
+    `, [userId]);
+    const userEClasses = evidenceRes.rows.map(r => r.eClass);
+
+    const matchesRes = await pool.query(`
+      SELECT * FROM "opportunities" 
+      WHERE "requiredEClass" = ANY($1::text[])
+      ORDER BY "createdAt" DESC;
+    `, [userEClasses]);
+
+    res.json({
+      userId,
+      trustLevel: user.identityTrustLevel,
+      verifiedEClasses: userEClasses,
+      matchCount: matchesRes.rows.length,
+      opportunities: matchesRes.rows
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
