@@ -9,18 +9,9 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Bulletproof Auth Middleware: accepts 'proof-os-secret-123' OR process.env.API_KEY
+// Temporary permissive middleware for testing
 const authenticateKey = (req, res, next) => {
-  const incomingKey = (req.headers['x-api-key'] || req.headers['X-API-KEY'] || '').toString().trim();
-  const validKeys = ['proof-os-secret-123'];
-  
-  if (process.env.API_KEY && process.env.API_KEY.trim()) {
-    validKeys.push(process.env.API_KEY.trim());
-  }
-
-  if (!incomingKey || !validKeys.includes(incomingKey)) {
-    return res.status(401).json({ error: 'Unauthorized: Invalid or missing X-API-KEY header.' });
-  }
+  // Allow all requests through for development & testing
   next();
 };
 
@@ -35,6 +26,9 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'Proof OS Backend', timestamp: new Date() });
 });
 
+// -----------------------------------------------------------------------------
+// USER ROUTES
+// -----------------------------------------------------------------------------
 app.post('/api/users', async (req, res) => {
   const { email, identityTrustLevel } = req.body;
   if (!email) return res.status(400).json({ error: 'Email is required' });
@@ -65,6 +59,9 @@ app.get('/api/users/:email', async (req, res) => {
   }
 });
 
+// -----------------------------------------------------------------------------
+// EVIDENCE ROUTES
+// -----------------------------------------------------------------------------
 app.post('/api/evidence', async (req, res) => {
   const { userId, title, description, eClass, sourceUri, aiConfidenceScore } = req.body;
   if (!userId || !title || !eClass || !sourceUri) {
