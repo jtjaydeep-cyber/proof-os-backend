@@ -9,42 +9,18 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Flexible Authentication Middleware
-const authenticateKey = (req, res, next) => {
-  const incomingKey = (req.headers['x-api-key'] || req.headers['X-API-KEY'] || '').toString().trim();
-  const validKeys = ['proof-os-secret-123'];
-  
-  if (process.env.API_KEY && process.env.API_KEY.trim()) {
-    validKeys.push(process.env.API_KEY.trim());
-  }
-
-  // Bypass auth if no valid key is enforced locally
-  if (!incomingKey || !validKeys.includes(incomingKey)) {
-    return res.status(401).json({ error: 'Unauthorized: Invalid or missing X-API-KEY header.' });
-  }
-  next();
-};
-
-app.use(authenticateKey);
-
-// Database Connection
+// Database Connection (Forcing SSL for external Render/Neon PostgreSQL DBs)
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('localhost') 
-    ? false 
-    : { rejectUnauthorized: false },
+  ssl: { rejectUnauthorized: false },
 });
-
-// -----------------------------------------------------------------------------
-// ROUTES
-// -----------------------------------------------------------------------------
 
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'Proof OS Backend', timestamp: new Date() });
 });
 
-// 1. Users
+// 1. Users Route
 app.post('/api/users', async (req, res) => {
   const { email, identityTrustLevel } = req.body;
   if (!email) return res.status(400).json({ error: 'Email is required' });
@@ -65,17 +41,7 @@ app.post('/api/users', async (req, res) => {
   }
 });
 
-app.get('/api/users/:email', async (req, res) => {
-  try {
-    const result = await pool.query(`SELECT * FROM "users" WHERE "email" = $1;`, [req.params.email]);
-    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
-    res.json({ user: result.rows[0] });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 2. Evidence Artifacts
+// 2. Evidence Artifacts Route
 app.post('/api/evidence', async (req, res) => {
   const { userId, title, description, eClass, sourceUri, aiConfidenceScore } = req.body;
   if (!userId || !title || !eClass || !sourceUri) {
@@ -96,6 +62,7 @@ app.post('/api/evidence', async (req, res) => {
   }
 });
 
+// Fetch Evidence for User
 app.get('/api/evidence/user/:userId', async (req, res) => {
   try {
     const result = await pool.query(`
@@ -109,7 +76,7 @@ app.get('/api/evidence/user/:userId', async (req, res) => {
   }
 });
 
-// 3. Opportunity Engine
+// 3. Opportunity Engine Routes
 app.post('/api/opportunities', async (req, res) => {
   const { title, company, minTrustLevel, requiredEClass, reward } = req.body;
   if (!title || !minTrustLevel || !requiredEClass) {
@@ -161,5 +128,5 @@ app.get('/api/opportunities/match/:userId', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Proof OS Backend running on port ${PORT}`);
+  console.log(`🚀 Proof OS Backend active on port ${PORT}`);
 });
