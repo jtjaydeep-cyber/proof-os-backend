@@ -6,16 +6,19 @@ const { Pool } = require('pg');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// API Key Auth Middleware (with default fallback)
+// Bulletproof Auth Middleware: accepts 'proof-os-secret-123' OR process.env.API_KEY
 const authenticateKey = (req, res, next) => {
-  const apiKey = req.headers['x-api-key'];
-  const expectedKey = process.env.API_KEY || 'proof-os-secret-123';
+  const incomingKey = (req.headers['x-api-key'] || req.headers['X-API-KEY'] || '').toString().trim();
+  const validKeys = ['proof-os-secret-123'];
+  
+  if (process.env.API_KEY && process.env.API_KEY.trim()) {
+    validKeys.push(process.env.API_KEY.trim());
+  }
 
-  if (apiKey !== expectedKey) {
+  if (!incomingKey || !validKeys.includes(incomingKey)) {
     return res.status(401).json({ error: 'Unauthorized: Invalid or missing X-API-KEY header.' });
   }
   next();
@@ -23,30 +26,18 @@ const authenticateKey = (req, res, next) => {
 
 app.use(authenticateKey);
 
-// Database Pool Configuration with SSL
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false,
-  },
+  ssl: { rejectUnauthorized: false },
 });
 
-// Health Check Route
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'Proof OS Backend', timestamp: new Date() });
 });
 
-// -----------------------------------------------------------------------------
-// USER ROUTES
-// -----------------------------------------------------------------------------
-
-// Create or Update User
 app.post('/api/users', async (req, res) => {
   const { email, identityTrustLevel } = req.body;
-  
-  if (!email) {
-    return res.status(400).json({ error: 'Email is required' });
-  }
+  if (!email) return res.status(400).json({ error: 'Email is required' });
 
   try {
     const result = await pool.query(`
@@ -60,32 +51,22 @@ app.post('/api/users', async (req, res) => {
 
     res.status(201).json({ success: true, user: result.rows[0] });
   } catch (err) {
-    console.error('Error creating user:', err);
     res.status(500).json({ error: 'Failed to create user', details: err.message });
   }
 });
 
-// Fetch User by Email
 app.get('/api/users/:email', async (req, res) => {
   try {
     const result = await pool.query(`SELECT * FROM "users" WHERE "email" = $1;`, [req.params.email]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
     res.json({ user: result.rows[0] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// -----------------------------------------------------------------------------
-// EVIDENCE ARTIFACT ROUTES
-// -----------------------------------------------------------------------------
-
-// Create Evidence Artifact
 app.post('/api/evidence', async (req, res) => {
   const { userId, title, description, eClass, sourceUri, aiConfidenceScore } = req.body;
-
   if (!userId || !title || !eClass || !sourceUri) {
     return res.status(400).json({ error: 'userId, title, eClass, and sourceUri are required' });
   }
@@ -100,12 +81,10 @@ app.post('/api/evidence', async (req, res) => {
 
     res.status(201).json({ success: true, artifact: result.rows[0] });
   } catch (err) {
-    console.error('Error creating evidence artifact:', err);
     res.status(500).json({ error: 'Failed to record evidence', details: err.message });
   }
 });
 
-// Get All Evidence Artifacts for a User
 app.get('/api/evidence/user/:userId', async (req, res) => {
   try {
     const result = await pool.query(`
@@ -113,14 +92,12 @@ app.get('/api/evidence/user/:userId', async (req, res) => {
       WHERE "userId" = $1 
       ORDER BY "createdAt" DESC;
     `, [req.params.userId]);
-    
     res.json({ count: result.rows.length, artifacts: result.rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Start Server
 app.listen(PORT, () => {
-  console.log(`🚀 Proof OS Backend running on http://localhost:${PORT}`);
+  console.log(`🚀 Proof OS Backend running on port ${PORT}`);
 });
