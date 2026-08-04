@@ -7,9 +7,13 @@
     "build": "mkdir -p dist src && cp index.js server.js && cp index.js dist/index.js && cp index.js src/index.js"
   },
   "dependencies": {
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
     "express": "^4.19.2",
+    "express-rate-limit": "^8.6.1",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^9.0.4",
     "pg": "^8.11.5"
   }
 }
