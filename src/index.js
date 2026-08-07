@@ -2,12 +2,19 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
 const { Resend } = require('resend');
+const Razorpay = require('razorpay');
 
 const app = express();
 const prisma = new PrismaClient();
 const resend = new Resend(process.env.RESEND_API_KEY);
+
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_dummy',
+  key_secret: process.env.RAZORPAY_KEY_SECRET || 'dummy_secret',
+});
 
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-in-prod';
@@ -83,6 +90,81 @@ app.post('/api/auth/token', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'Auth failed', details: err.message });
   }
+});
+
+// --- REVENUE ROUTE 1: Create Razorpay Order ---
+app.post('/api/checkout/create-session', authenticateToken, async (req, res) => {
+  const { type, opportunityData } = req.body;
+  const user = req.user;
+
+  let amount = 50000; // ₹500 in paise
+  if (type === 'JOB_POSTING') {
+    amount = 499900; // ₹4,999 in paise
+  }
+
+  try {
+    const order = await razorpay.orders.create({
+      amount,
+      currency: 'INR',
+      receipt: `rcpt_${Date.now()}`,
+      notes: {
+        userId: user.userId,
+        type: type || 'CERTIFICATE',
+        opportunityData: opportunityData ? JSON.stringify(opportunityData) : '',
+      },
+    });
+
+    res.json({
+      success: true,
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      keyId: process.env.RAZORPAY_KEY_ID,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Razorpay order creation failed', details: err.message });
+  }
+});
+
+// --- REVENUE ROUTE 2: Razorpay Webhook Listener ---
+app.post('/api/webhooks/razorpay', async (req, res) => {
+  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || 'your_webhook_secret';
+  const signature = req.headers['x-razorpay-signature'];
+
+  const shasum = crypto.createHmac('sha256', webhookSecret);
+  shasum.update(JSON.stringify(req.body));
+  const digest = shasum.digest('hex');
+
+  if (digest !== signature) {
+    return res.status(400).json({ error: 'Invalid webhook signature' });
+  }
+
+  const event = req.body;
+
+  if (event.event === 'payment.captured' || event.event === 'order.paid') {
+    const paymentEntity = event.payload.payment.entity;
+    const { userId, type, opportunityData } = paymentEntity.notes;
+
+    if (type === 'CERTIFICATE' && userId) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { identityTrustLevel: 'LEVEL_3_VERIFIED' },
+      });
+    } else if (type === 'JOB_POSTING' && opportunityData) {
+      const parsedData = JSON.parse(opportunityData);
+      await prisma.opportunity.create({
+        data: {
+          title: parsedData.title,
+          company: parsedData.company || 'Verified Employer',
+          minTrustLevel: parsedData.minTrustLevel || 'LEVEL_1',
+          requiredEClass: parsedData.requiredEClass,
+          description: parsedData.description || null,
+        },
+      });
+    }
+  }
+
+  res.json({ status: 'ok' });
 });
 
 // --- 1. Users Route ---
