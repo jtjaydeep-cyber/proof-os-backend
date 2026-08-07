@@ -7,6 +7,7 @@
     "build": "mkdir -p dist src && cp index.js server.js && cp index.js dist/index.js && cp index.js src/index.js"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
     "express": "^4.19.2",
@@ -15,5 +16,9 @@
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^9.0.4",
     "pg": "^8.11.5"
+  },
+  "devDependencies": {
+    "@prisma/client": "^6.19.3",
+    "prisma": "^6.19.3"
   }
 }
