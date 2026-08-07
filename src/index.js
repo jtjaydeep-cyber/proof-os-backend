@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 const { PrismaClient } = require('@prisma/client');
 const { Resend } = require('resend');
 const Razorpay = require('razorpay');
@@ -21,6 +22,16 @@ const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-in-prod';
 
 app.use(cors());
 app.use(express.json());
+app.use(express.static('public')); // Serve Frontend Modal
+
+// --- Rate Limiter Middleware for B2B Verification Endpoints ---
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes window
+  max: 100, // Limit each IP to 100 requests per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many verification requests. Rate limit exceeded.' }
+});
 
 // --- Authentication Middleware ---
 const authenticateToken = (req, res, next) => {
@@ -165,6 +176,45 @@ app.post('/api/webhooks/razorpay', async (req, res) => {
   }
 
   res.json({ status: 'ok' });
+});
+
+// --- B2B PAY-PER-USE VERIFICATION ROUTE ---
+app.post('/api/v1/b2b/verify-candidate', apiLimiter, authenticateToken, async (req, res) => {
+  const { targetUserId, requiredEClass } = req.body;
+
+  if (!targetUserId) {
+    return res.status(400).json({ error: 'targetUserId is required' });
+  }
+
+  try {
+    const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
+    if (!targetUser) return res.status(404).json({ error: 'Candidate user not found' });
+
+    let artifacts = [];
+    if (requiredEClass) {
+      artifacts = await prisma.evidenceArtifact.findMany({
+        where: { userId: targetUserId, eClass: requiredEClass }
+      });
+    } else {
+      artifacts = await prisma.evidenceArtifact.findMany({
+        where: { userId: targetUserId }
+      });
+    }
+
+    res.json({
+      verified: artifacts.length > 0 && targetUser.identityTrustLevel === 'LEVEL_3_VERIFIED',
+      candidateId: targetUserId,
+      trustLevel: targetUser.identityTrustLevel,
+      matchingArtifactsCount: artifacts.length,
+      artifacts,
+      billing: {
+        billedUnits: 1,
+        ratePerVerification: "₹10"
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- 1. Users Route ---

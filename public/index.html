@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Proof OS — Identity & Capability Verification Engine</title>
+  <title>Proof OS – Identity & Capability Verification Engine</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <style>
     body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
     .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
@@ -27,9 +28,8 @@
 
       <form id="magicLinkForm" class="flex gap-2">
         <input type="email" id="authEmail" placeholder="Enter your email address" required 
-          class="flex-1 bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
-        <button type="submit" 
-          class="bg-sky-500 hover:bg-sky-600 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm transition">
+               class="flex-1 bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
+        <button type="submit" class="bg-sky-500 hover:bg-sky-600 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm transition">
           Send Magic Link
         </button>
       </form>
@@ -40,30 +40,26 @@
       </div>
     </div>
 
-    <!-- Verification / Issue Badge Card -->
+    <!-- Razorpay Checkout Card -->
     <div class="glass p-6 rounded-xl shadow-xl space-y-4">
-      <h2 class="text-xl font-bold text-slate-200">Verify Account & Issue Badge</h2>
-      <form id="verifyForm" class="space-y-3">
+      <h2 class="text-xl font-bold text-slate-200">Verification & Paid Options</h2>
+      <div class="space-y-3">
         <div>
-          <label class="block text-xs font-semibold text-slate-400 mb-1">Target Account Email</label>
-          <input type="email" id="verifyEmail" placeholder="dev@example.com" required 
-            class="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+          <label class="block text-xs font-semibold text-slate-400 mb-1">Select Service</label>
+          <select id="checkoutType" class="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+            <option value="CERTIFICATE">Verify Identity & Upgrade Trust Level (₹500)</option>
+            <option value="JOB_POSTING">Post Verified Job Opportunity (₹4,999)</option>
+          </select>
         </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-400 mb-1">Public Profile Link</label>
-          <input type="url" id="profileUrl" placeholder="https://github.com/username or https://leetcode.com/u/username" required 
-            class="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-        </div>
-        <button type="submit" 
-          class="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold py-2 rounded-lg text-sm transition">
-          Verify & Issue Certificate
+        <button onclick="startCheckout()" class="w-full bg-sky-500 hover:bg-sky-600 text-slate-950 font-bold py-2 rounded-lg text-sm transition">
+          Pay & Proceed with Razorpay
         </button>
-      </form>
+      </div>
     </div>
 
-    <!-- User Issued Certificates List -->
+    <!-- User Evidence & Artifacts List -->
     <div class="glass p-6 rounded-xl shadow-xl space-y-4">
-      <h2 class="text-xl font-bold text-slate-200">Your Verified Certificates</h2>
+      <h2 class="text-xl font-bold text-slate-200">Your Verified Credentials & Evidence</h2>
       <div id="certList" class="space-y-3">
         <p class="text-slate-500 text-xs italic">Log in via magic link to view your dashboard credentials.</p>
       </div>
@@ -79,7 +75,7 @@
       window.history.replaceState({}, document.title, window.location.pathname);
     }
 
-    const authToken = localStorage.getItem('proof_jwt');
+    let authToken = localStorage.getItem('proof_jwt');
 
     // Magic Link Form Handler
     document.getElementById('magicLinkForm').addEventListener('submit', async (e) => {
@@ -91,71 +87,97 @@
       notice.innerText = "Requesting magic link...";
 
       try {
-        const res = await fetch('/api/auth/magic-link', {
+        const res = await fetch('/api/auth/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email })
         });
         const data = await res.json();
-        
-        if (data.success) {
+
+        if (data.success && data.token) {
+          localStorage.setItem('proof_jwt', data.token);
+          authToken = data.token;
           notice.className = "p-3 rounded-lg text-xs font-medium bg-emerald-950 text-emerald-300 border border-emerald-800 block";
-          if (data.magicLink) {
-            notice.innerHTML = `${data.message} <br><a href="${data.magicLink}" class="underline font-bold text-sky-400">Click to Log In (Dev Mode)</a>`;
-          } else {
-            notice.innerText = data.message;
-          }
+          notice.innerText = "Authenticated successfully!";
+          fetchUserCertificates();
         } else {
           notice.className = "p-3 rounded-lg text-xs font-medium bg-red-950 text-red-300 border border-red-800 block";
-          notice.innerText = data.error || 'Failed to send magic link.';
+          notice.innerText = data.error || 'Failed to authenticate.';
         }
       } catch (err) {
         notice.className = "p-3 rounded-lg text-xs font-medium bg-red-950 text-red-300 border border-red-800 block";
-        notice.innerText = "Network error while requesting magic link.";
+        notice.innerText = "Network error while requesting authentication.";
       }
     });
 
-    // Account Verification Handler
-    document.getElementById('verifyForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const email = document.getElementById('verifyEmail').value;
-      const profileUrl = document.getElementById('profileUrl').value;
+    // Razorpay Checkout Handler
+    async function startCheckout() {
+      if (!authToken) {
+        alert('Please login first to proceed with checkout!');
+        return;
+      }
+
+      const type = document.getElementById('checkoutType').value;
 
       try {
-        const res = await fetch('/api/verify-account', {
+        const res = await fetch('/api/checkout/create-session', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, profileUrl })
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({
+            type,
+            opportunityData: type === 'JOB_POSTING' ? {
+              title: "Senior Full Stack Engineer",
+              requiredEClass: "ENGINEERING_E4",
+              minTrustLevel: "LEVEL_3_VERIFIED"
+            } : null
+          })
         });
-        const data = await res.json();
 
-        if (data.success) {
-          alert(`✅ Verification Successful!\n\nCertificate Issued: ${data.certificate.title}`);
-          fetchUserCertificates();
-        } else {
-          alert(`❌ Error: ${data.error}`);
+        const orderData = await res.json();
+
+        if (!orderData.orderId) {
+          alert('Failed to initialize Razorpay checkout session.');
+          return;
         }
-      } catch (err) {
-        alert('❌ Network error processing verification.');
-      }
-    });
 
-    // Fetch Dashboard Certificates
+        const options = {
+          key: orderData.keyId,
+          amount: orderData.amount,
+          currency: orderData.currency,
+          name: "Proof OS Engine",
+          description: type === 'CERTIFICATE' ? "Certificate Verification" : "Job Opportunity Posting",
+          order_id: orderData.orderId,
+          handler: function (response) {
+            alert('Payment Successful! Payment ID: ' + response.razorpay_payment_id);
+            fetchUserCertificates();
+          },
+          theme: { color: "#0284c7" }
+        };
+
+        const rzp = new Razorpay(options);
+        rzp.open();
+      } catch (err) {
+        alert('Checkout process encountered a network error.');
+      }
+    }
+
+    // Fetch Dashboard Evidence / User Data
     async function fetchUserCertificates() {
       if (!authToken) return;
 
       try {
-        const res = await fetch('/api/user/certificates', {
+        const res = await fetch('/api/evidence/user/me', {
           headers: { 'Authorization': `Bearer ${authToken}` }
         });
         const data = await res.json();
 
-        if (data.success) {
+        if (data.artifacts) {
           document.getElementById('userInfo').classList.remove('hidden');
-          document.getElementById('loggedInEmail').innerText = data.email;
-          renderCertificates(data.certificates);
-        } else {
-          localStorage.removeItem('proof_jwt');
+          document.getElementById('loggedInEmail').innerText = localStorage.getItem('proof_user_email') || 'User';
+          renderCertificates(data.artifacts);
         }
       } catch (err) {
         console.error('Failed to load certificates:', err);
@@ -165,45 +187,17 @@
     function renderCertificates(certs) {
       const list = document.getElementById('certList');
       if (!certs || certs.length === 0) {
-        list.innerHTML = '<p class="text-slate-400 text-xs">No certificates issued yet.</p>';
+        list.innerHTML = '<p class="text-slate-400 text-xs">No evidence artifacts recorded yet.</p>';
         return;
       }
 
-      const appUrl = window.location.origin;
-
-      list.innerHTML = certs.map(c => {
-        const verifyUrl = `${appUrl}/verify/${c.verification_hash}`;
-        const badgeUrl = `${appUrl}/badge/${c.verification_hash}.svg`;
-        const markdownSnippet = `[![Proof OS Verified](${badgeUrl})](${verifyUrl})`;
-
-        const linkedinUrl = `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME` +
-          `&name=${encodeURIComponent(c.title)}` +
-          `&organizationName=${encodeURIComponent(c.issuer || 'Proof OS Engine')}` +
-          `&issueYear=${new Date(c.issued_at).getFullYear()}` +
-          `&issueMonth=${new Date(c.issued_at).getMonth() + 1}` +
-          `&certUrl=${encodeURIComponent(verifyUrl)}` +
-          `&certId=${encodeURIComponent(c.verification_hash.substring(0, 16))}`;
-
-        return `
-          <div style="background:#1e293b; border:1px solid #334155; padding:16px; border-radius:8px; margin-bottom:12px;">
-            <h3 style="margin:0 0 8px 0; color:#38bdf8; font-size:1.05rem; font-weight:bold;">${c.title}</h3>
-            <p style="margin:4px 0; color:#94a3b8; font-size:0.8rem;"><strong>Issued:</strong> ${new Date(c.issued_at).toLocaleDateString()}</p>
-            <p style="margin:4px 0; color:#94a3b8; font-size:0.8rem;"><strong>Hash:</strong> <code style="color:#cbd5e1;">${c.verification_hash.substring(0, 18)}...</code></p>
-            
-            <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
-              <a href="${linkedinUrl}" target="_blank" style="background:#0a66c2; color:#fff; text-decoration:none; padding:6px 12px; border-radius:4px; font-size:0.75rem; font-weight:bold;">
-                + Add to LinkedIn
-              </a>
-              <a href="${verifyUrl}" target="_blank" style="background:#334155; color:#38bdf8; text-decoration:none; padding:6px 12px; border-radius:4px; font-size:0.75rem;">
-                View Verification Page
-              </a>
-              <button onclick="navigator.clipboard.writeText('${markdownSnippet}'); alert('Markdown badge code copied to clipboard!');" style="background:#0f172a; border:1px solid #475569; color:#cbd5e1; padding:6px 12px; border-radius:4px; font-size:0.75rem; cursor:pointer;">
-                Copy README Badge Code
-              </button>
-            </div>
-          </div>
-        `;
-      }).join('');
+      list.innerHTML = certs.map(c => `
+        <div class="bg-slate-900 border border-slate-700 p-4 rounded-lg space-y-2">
+          <h3 class="text-sky-400 font-bold text-sm">${c.title}</h3>
+          <p class="text-slate-400 text-xs">Class: <strong>${c.eClass}</strong></p>
+          <p class="text-slate-500 text-xs truncate">Source: ${c.sourceUri}</p>
+        </div>
+      `).join('');
     }
 
     function logout() {
@@ -211,8 +205,9 @@
       window.location.href = '/';
     }
 
-    fetchUserCertificates();
+    if (authToken) {
+      fetchUserCertificates();
+    }
   </script>
 </body>
 </html>
-
