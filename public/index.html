@@ -37,22 +37,28 @@
       </div>
     </div>
 
-    <!-- Upload Work / Video Proof Section -->
+    <!-- AI Video Transcription & Work Proof Upload Section -->
     <div class="glass p-6 rounded-xl shadow-xl space-y-4">
-      <h2 class="text-xl font-bold text-slate-200">Submit Work Proof / Video Demo</h2>
-      <p class="text-slate-400 text-xs">Upload your project demonstration video, portfolio link, or code data. Proof OS auto-detects your capability class and issues a verification badge.</p>
+      <h2 class="text-xl font-bold text-slate-200">AI Video Proof & Skill Extractor</h2>
+      <p class="text-slate-400 text-xs">Attach a video recording of your project walkthrough or code execution. Our AI transcribes your explanation, extracts skills, and issues a verified badge.</p>
       
-      <form id="uploadForm" class="space-y-3">
-        <input type="text" id="workTitle" placeholder="Project Title (e.g. FullStack React App Demo)" required 
+      <form id="videoUploadForm" class="space-y-3">
+        <input type="text" id="videoTitle" placeholder="Project Title (e.g., Node.js Microservices Demo)" required 
                class="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
         
-        <input type="text" id="workUri" placeholder="Video URL / GitHub / Portfolio Link" required 
-               class="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500" />
+        <input type="file" id="videoFile" accept="video/*" required 
+               class="w-full bg-slate-900 border border-slate-700 text-slate-300 rounded-lg p-2 text-xs focus:outline-none" />
 
-        <button type="submit" class="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold py-2 rounded-lg text-sm transition">
-          Analyze & Verify Work
+        <button type="submit" id="submitBtn" class="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold py-2 rounded-lg text-sm transition">
+          Transcribe & AI Verify
         </button>
       </form>
+
+      <div id="analysisResult" class="hidden bg-slate-900 border border-slate-700 p-3 rounded-lg text-xs space-y-2">
+        <p class="text-emerald-400 font-bold">✓ AI Extraction Complete</p>
+        <p id="transcriptText" class="text-slate-400 italic truncate"></p>
+        <p id="detectedClass" class="text-sky-300 font-semibold"></p>
+      </div>
     </div>
 
     <!-- Active Job Opportunities Feed -->
@@ -66,7 +72,7 @@
       </div>
     </div>
 
-    <!-- User Evidence & Artifacts List -->
+    <!-- Credentials List -->
     <div class="glass p-6 rounded-xl shadow-xl space-y-4">
       <h2 class="text-xl font-bold text-slate-200">Your Verified Credentials & Evidence</h2>
       <div id="certList" class="space-y-3">
@@ -78,42 +84,84 @@
   <script>
     let authToken = localStorage.getItem('proof_jwt');
 
-    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+    // Magic Link Form Handler
+    document.getElementById('magicLinkForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('authEmail').value;
+      const notice = document.getElementById('authNotice');
+
+      try {
+        const res = await fetch('/api/auth/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+
+        if (data.success && data.token) {
+          localStorage.setItem('proof_jwt', data.token);
+          localStorage.setItem('proof_user_email', email);
+          authToken = data.token;
+          
+          notice.classList.remove('hidden', 'bg-red-900/50', 'text-red-300');
+          notice.classList.add('bg-emerald-900/50', 'text-emerald-300');
+          notice.innerText = 'Authenticated successfully!';
+          
+          fetchUserCertificates();
+        } else {
+          notice.classList.remove('hidden', 'bg-emerald-900/50', 'text-emerald-300');
+          notice.classList.add('bg-red-900/50', 'text-red-300');
+          notice.innerText = data.error || 'Authentication failed.';
+        }
+      } catch (err) {
+        alert('Authentication server error.');
+      }
+    });
+
+    // AI Video Proof Upload Handler
+    document.getElementById('videoUploadForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!authToken) {
-        alert('Please log in first before submitting work for verification!');
+        alert('Please log in via Magic Link first!');
         return;
       }
 
-      const title = document.getElementById('workTitle').value;
-      const sourceUri = document.getElementById('workUri').value;
+      const btn = document.getElementById('submitBtn');
+      const fileInput = document.getElementById('videoFile');
+      const title = document.getElementById('videoTitle').value;
+
+      const formData = new FormData();
+      formData.append('videoFile', fileInput.files[0]);
+      formData.append('title', title);
+
+      btn.disabled = true;
+      btn.innerText = "Transcribing & Analyzing with AI...";
 
       try {
-        const res = await fetch('/api/evidence/upload', {
+        const res = await fetch('/api/evidence/transcribe-verify', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${authToken}`
-          },
-          body: JSON.stringify({
-            title,
-            sourceUri,
-            mediaType: 'video/demo'
-          })
+          headers: { 'Authorization': `Bearer ${authToken}` },
+          body: formData
         });
 
         const data = await res.json();
         if (data.success) {
-          alert('Work analyzed successfully! Badge issued: ' + data.artifact.eClass);
+          document.getElementById('analysisResult').classList.remove('hidden');
+          document.getElementById('transcriptText').innerText = `"${data.transcript}"`;
+          document.getElementById('detectedClass').innerText = `Assigned Capability Class: ${data.artifact.eClass}`;
           fetchUserCertificates();
         } else {
-          alert('Verification failed: ' + (data.error || 'Server error'));
+          alert('Failed: ' + (data.error || 'Transcription error'));
         }
       } catch (err) {
-        alert('Network error during file verification upload.');
+        alert('Upload or API processing error.');
+      } finally {
+        btn.disabled = false;
+        btn.innerText = "Transcribe & AI Verify";
       }
     });
 
+    // Fetch Opportunities
     async function fetchJobs() {
       const container = document.getElementById('jobList');
       try {
@@ -141,6 +189,7 @@
       }
     }
 
+    // Fetch User Certificates
     async function fetchUserCertificates() {
       if (!authToken) return;
 
