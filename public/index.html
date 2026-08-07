@@ -13,7 +13,7 @@
 </head>
 <body class="min-h-screen flex flex-col items-center justify-center p-4">
 
-  <div class="max-w-2xl w-full space-y-6">
+  <div class="max-w-2xl w-full space-y-6 my-8">
     <!-- Header -->
     <div class="text-center space-y-2">
       <h1 class="text-4xl font-extrabold tracking-tight text-sky-400">Proof OS</h1>
@@ -55,6 +55,17 @@
         <button id="actionBtn" onclick="handleSelection()" class="w-full bg-sky-500 hover:bg-sky-600 text-slate-950 font-bold py-2 rounded-lg text-sm transition">
           Proceed
         </button>
+      </div>
+    </div>
+
+    <!-- Active Job Opportunities Feed -->
+    <div class="glass p-6 rounded-xl shadow-xl space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-xl font-bold text-slate-200">Active Verified Job Listings</h2>
+        <button onclick="fetchJobs()" class="text-xs text-sky-400 hover:underline">Refresh</button>
+      </div>
+      <div id="jobList" class="space-y-3">
+        <p class="text-slate-500 text-xs italic">Loading job listings...</p>
       </div>
     </div>
 
@@ -135,6 +146,7 @@
             type,
             opportunityData: type === 'JOB_POSTING' ? {
               title: "Senior Full Stack Engineer",
+              company: "TechCorp",
               requiredEClass: "ENGINEERING_E4",
               minTrustLevel: "LEVEL_3_VERIFIED"
             } : null
@@ -158,6 +170,7 @@
           handler: function (response) {
             alert('Payment Successful! ID: ' + response.razorpay_payment_id);
             fetchUserCertificates();
+            fetchJobs();
           },
           theme: { color: "#0284c7" }
         };
@@ -166,6 +179,41 @@
         rzp.open();
       } catch (err) {
         alert('Checkout encountered a network error.');
+      }
+    }
+
+    async function fetchJobs() {
+      const container = document.getElementById('jobList');
+      try {
+        const res = await fetch('/api/opportunities');
+        const jobs = await res.json();
+
+        if (!Array.isArray(jobs) || jobs.length === 0) {
+          container.innerHTML = '<p class="text-slate-500 text-xs italic">No active job listings found at the moment.</p>';
+          return;
+        }
+
+        container.innerHTML = jobs.map(j => `
+          <div class="bg-slate-900 border border-slate-700 p-4 rounded-lg flex justify-between items-center">
+            <div>
+              <h3 class="text-sky-400 font-bold text-sm">${j.title || 'Untitled Opportunity'}</h3>
+              <p class="text-slate-400 text-xs">Company: <span class="text-slate-200">${j.company || 'Verified Recruiter'}</span></p>
+              <div class="flex gap-2 mt-2">
+                <span class="bg-slate-800 border border-slate-700 text-slate-300 text-[10px] px-2 py-0.5 rounded">
+                  Class: ${j.requiredEClass || 'ANY'}
+                </span>
+                <span class="bg-emerald-950 border border-emerald-800 text-emerald-300 text-[10px] px-2 py-0.5 rounded">
+                  Min Level: ${j.minTrustLevel || 'LEVEL_1'}
+                </span>
+              </div>
+            </div>
+            <button onclick="alert('Application submitted using your verified Proof OS profile!')" class="bg-sky-500 hover:bg-sky-600 text-slate-950 font-semibold px-3 py-1 rounded text-xs transition">
+              Apply Now
+            </button>
+          </div>
+        `).join('');
+      } catch (err) {
+        container.innerHTML = '<p class="text-red-400 text-xs">Unable to load job listings.</p>';
       }
     }
 
@@ -210,6 +258,8 @@
       window.location.href = '/';
     }
 
+    // Initial Load
+    fetchJobs();
     if (authToken) {
       fetchUserCertificates();
     }
