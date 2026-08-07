@@ -40,19 +40,20 @@
       </div>
     </div>
 
-    <!-- Razorpay Checkout Card -->
+    <!-- Tier Selection & Checkout Card -->
     <div class="glass p-6 rounded-xl shadow-xl space-y-4">
-      <h2 class="text-xl font-bold text-slate-200">Verification & Paid Options</h2>
+      <h2 class="text-xl font-bold text-slate-200">Select Verification Level</h2>
       <div class="space-y-3">
         <div>
-          <label class="block text-xs font-semibold text-slate-400 mb-1">Select Service</label>
+          <label class="block text-xs font-semibold text-slate-400 mb-1">Choose Plan / Option</label>
           <select id="checkoutType" class="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
-            <option value="CERTIFICATE">Verify Identity & Upgrade Trust Level (₹500)</option>
-            <option value="JOB_POSTING">Post Verified Job Opportunity (₹4,999)</option>
+            <option value="FREE_TIER">Free Candidate Verification (Level 1 - ₹0)</option>
+            <option value="CERTIFICATE">Pro Identity & Badge Upgrade (Level 3 - ₹199)</option>
+            <option value="JOB_POSTING">Post Verified Job Opportunity (Employer - ₹4,999)</option>
           </select>
         </div>
-        <button onclick="startCheckout()" class="w-full bg-sky-500 hover:bg-sky-600 text-slate-950 font-bold py-2 rounded-lg text-sm transition">
-          Pay & Proceed with Razorpay
+        <button id="actionBtn" onclick="handleSelection()" class="w-full bg-sky-500 hover:bg-sky-600 text-slate-950 font-bold py-2 rounded-lg text-sm transition">
+          Proceed
         </button>
       </div>
     </div>
@@ -67,7 +68,6 @@
   </div>
 
   <script>
-    // Extract auth token from URL redirect
     const urlParams = new URLSearchParams(window.location.search);
     const urlToken = urlParams.get('auth_token');
     if (urlToken) {
@@ -77,7 +77,6 @@
 
     let authToken = localStorage.getItem('proof_jwt');
 
-    // Magic Link Form Handler
     document.getElementById('magicLinkForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const email = document.getElementById('authEmail').value;
@@ -96,6 +95,7 @@
 
         if (data.success && data.token) {
           localStorage.setItem('proof_jwt', data.token);
+          localStorage.setItem('proof_user_email', email);
           authToken = data.token;
           notice.className = "p-3 rounded-lg text-xs font-medium bg-emerald-950 text-emerald-300 border border-emerald-800 block";
           notice.innerText = "Authenticated successfully!";
@@ -110,14 +110,19 @@
       }
     });
 
-    // Razorpay Checkout Handler
-    async function startCheckout() {
+    async function handleSelection() {
       if (!authToken) {
-        alert('Please login first to proceed with checkout!');
+        alert('Please log in via Magic Link first!');
         return;
       }
 
       const type = document.getElementById('checkoutType').value;
+
+      if (type === 'FREE_TIER') {
+        alert('Free Tier Activated! You can now view opportunities and upload basic proof artifacts.');
+        fetchUserCertificates();
+        return;
+      }
 
       try {
         const res = await fetch('/api/checkout/create-session', {
@@ -139,7 +144,7 @@
         const orderData = await res.json();
 
         if (!orderData.orderId) {
-          alert('Failed to initialize Razorpay checkout session.');
+          alert('Failed to initialize checkout session.');
           return;
         }
 
@@ -148,10 +153,10 @@
           amount: orderData.amount,
           currency: orderData.currency,
           name: "Proof OS Engine",
-          description: type === 'CERTIFICATE' ? "Certificate Verification" : "Job Opportunity Posting",
+          description: type === 'CERTIFICATE' ? "Pro Identity Upgrade" : "Job Posting",
           order_id: orderData.orderId,
           handler: function (response) {
-            alert('Payment Successful! Payment ID: ' + response.razorpay_payment_id);
+            alert('Payment Successful! ID: ' + response.razorpay_payment_id);
             fetchUserCertificates();
           },
           theme: { color: "#0284c7" }
@@ -160,11 +165,10 @@
         const rzp = new Razorpay(options);
         rzp.open();
       } catch (err) {
-        alert('Checkout process encountered a network error.');
+        alert('Checkout encountered a network error.');
       }
     }
 
-    // Fetch Dashboard Evidence / User Data
     async function fetchUserCertificates() {
       if (!authToken) return;
 
@@ -202,6 +206,7 @@
 
     function logout() {
       localStorage.removeItem('proof_jwt');
+      localStorage.removeItem('proof_user_email');
       window.location.href = '/';
     }
 
